@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 6
+names: ['cheetah', 'elephant', 'giraffe', 'lion', 'tiger', 'zebra']
+
+roboflow:
+  workspace: yolo-lab-4
+  project: animals-x4nzb
+  version: 5
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/yolo-lab-4/animals-x4nzb/dataset/5
