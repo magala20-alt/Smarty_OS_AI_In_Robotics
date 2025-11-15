@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 import cv2
 
-# Load your trained model
+# Load trained model
 model = YOLO("runs/train/toy_animals_full/weights/best.pt")
 
 # Open camera (0 = default webcam)
