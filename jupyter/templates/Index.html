@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dora Robot Adventure 🌈</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+
+body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    font-family: 'Comic Sans MS', sans-serif;
+    position: relative;
+    background: url('{{ url_for("static", filename="forest_bg.jpg") }}') no-repeat center center;
+    background-size: cover;
+}
+
+/* Overlay to make text readable on forest */
+body::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    z-index: 0;
+}
+
+h1 {
+    color: #5c2b7d;
+    font-size: 2.5em;
+    text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.5);
+    position: relative;
+    z-index: 1;
+}
+
+#cmd {
+    width: 300px;
+    padding: 12px;
+    border-radius: 20px;
+    border: 2px solid #ffb6c1;
+    text-align: center;
+    font-size: 1em;
+    outline: none;
+    position: relative;
+    z-index: 1;
+    background-color: rgba(255, 255, 255, 0.8);
+}
+
+button {
+    background-color: #ffb6c1;
+    border: none;
+    padding: 10px 16px;
+    margin-left: 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: transform 0.2s;
+    position: relative;
+    z-index: 1;
+}
+
+button:hover {
+    transform: scale(1.1);
+    background-color: #ff9aa2;
+}
+
+#status {
+    margin-top: 20px;
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #6a1b9a;
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+    position: relative;
+    z-index: 1;
+}
+
+#thinking {
+    display: inline-block;
+    font-weight: bold;
+    animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+    50% { opacity: 0.5; }
+}
+
+#dora {
+    width: 280px;
+    margin-top: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Floating bubbles */
+.bubble {
+    position: absolute;
+    bottom: -100px;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    animation: rise 10s infinite ease-in;
+    z-index: 1;
+}
+
+/* Confetti falling from top */
+.confetti {
+    position: absolute;
+    top: -20px; /* start slightly above the screen */
+    width: 10px;
+    height: 10px;
+    background-color: red; /* can randomize in JS */
+    opacity: 0.9;
+    border-radius: 50%;
+    z-index: 999; /* above everything */
+    animation: fall 3s linear forwards;
+}
+
+@keyframes fall {
+    0% { transform: translateY(0) rotate(0deg); }
+    100% { transform: translateY(110vh) rotate(360deg); } /* fall down past screen */
+}
+
+@keyframes rise {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-120vh) scale(1.5); opacity: 0; }
+}
+
+    </style>
+</head>
+<body>
+    <h1>🤖 Dora’s Robot Adventure!</h1>
+
+    <div>
+        <input id="cmd" placeholder="Type or say a command...">
+        <button onclick="send()">Send</button>
+        <button onclick="speak()">🎤 Speak</button>
+    </div>
+
+    <img id="dora" src="{{ url_for('static', filename='dora_idle.png') }}" alt="Dora" />
+    <div id="status">Dora is ready for your adventure...</div><audio id="audio_bg" src="{{ url_for('static', filename='bg.wav') }}" loop></audio>
+<audio id="audio_bg" src="{{ url_for('static', filename='bg.wav') }}" loop></audio>
+<audio id="audio_suspense" src="{{ url_for('static', filename='suspense.wav') }}"></audio>
+<audio id="audio_happy" src="{{ url_for('static', filename='happy.wav') }}"></audio>
+<audio id="audio_sad" src="{{ url_for('static', filename='sad.wav') }}"></audio>
+
+<script>
+const socket = io();
+const dora = document.getElementById('dora');
+const statusDiv = document.getElementById('status');
+const cmdInput = document.getElementById('cmd');
+
+// Audio elements
+const audioBg = document.getElementById('audio_bg');
+const audioSuspense = document.getElementById('audio_suspense');
+const audioHappy = document.getElementById('audio_happy');
+const audioSad = document.getElementById('audio_sad');
+
+// Start background music on first user interaction
+let bgStarted = false;
+function startBg() {
+    if (!bgStarted) {
+        audioBg.volume = 0.3;  // soft background music
+        audioBg.play().catch(e => console.log("BG play blocked:", e));
+        bgStarted = true;
+    }
+}
+// Remove listeners after first interaction
+        document.body.removeEventListener('click', startBg);
+        document.body.removeEventListener('keydown', startBg);
+
+document.body.addEventListener('click', startBg, { once: true });
+document.body.addEventListener('keydown', startBg, { once: true });
+
+// Socket listener
+socket.on('status', data => {
+    // Pause all non-background sounds
+    audioSuspense.pause(); audioSuspense.currentTime = 0;
+    audioHappy.pause(); audioHappy.currentTime = 0;
+    audioSad.pause(); audioSad.currentTime = 0;
+
+    if (data.state === 'thinking') {
+        statusDiv.innerHTML = '<span id="thinking">Dora is looking for it…🤔</span>';
+        dora.src = "{{ url_for('static', filename='dora_thinking.png') }}";
+        audioSuspense.play();
+    }
+    else if (data.state === 'happy') {
+        statusDiv.textContent = data.message;
+        dora.src = "{{ url_for('static', filename='dora_happy.gif') }}";
+        showConfetti();
+        audioHappy.play();
+    }
+    else if (data.state === 'grab') {
+        statusDiv.textContent = data.message;
+        dora.src = "{{ url_for('static', filename='dora_happy.gif') }}";
+    }
+    else if (data.state === 'putback') {
+        statusDiv.textContent = data.message;
+        dora.src = "{{ url_for('static', filename='dora_happy.gif') }}";
+        showConfetti();
+        audioHappy.play();
+    }
+    else if (data.state === 'sad') {
+        statusDiv.textContent = "Oh no! Dora couldn’t find it 😢";
+        dora.src = "{{ url_for('static', filename='dora_sad.png') }}";
+        audioSad.play();
+    }
+    else {
+        statusDiv.textContent = data.message || "Dora is ready for your adventure...";
+        dora.src = "{{ url_for('static', filename='dora_idle.png') }}";
+    }
+
+    // Reset to idle after 4 seconds
+    setTimeout(() => {
+        dora.src = "{{ url_for('static', filename='dora_idle.png') }}";
+        statusDiv.textContent = "Dora is ready for your adventure...";
+        cmdInput.value = "";
+    }, 4000);
+});
+        function send(forceCommand) {
+    const cmd = forceCommand || cmdInput.value.trim();
+    if (!cmd) return;
+    fetch('/send', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({command: cmd})
+    });
+    if (!forceCommand) {
+        cmdInput.value = ""; // only clear input if user typed manually
+    }
+}
+        async function speak() {
+    cmdInput.placeholder = "Listening... 🎙️";
+    cmdInput.value = "";  // Clear previous input
+    try {
+        const res = await fetch('/voice');
+        const data = await res.json();
+        const spoken = data.command || "";
+        if (spoken.trim() !== "") {
+            cmdInput.value = spoken;  // Display spoken text
+            send(spoken);             // Pass to send() without clearing
+        } else {
+            statusDiv.textContent = "Didn't catch that. Try again!";
+        }
+    } catch (err) {
+        console.error(err);
+        statusDiv.textContent = "Mic error! Please try again.";
+    } finally {
+        cmdInput.placeholder = "Type or say a command...";
+    }
+}
+
+        function showConfetti() {
+    const colors = ['#ff0a54','#ff477e','#ff7096','#ff85a1','#fbb1b1','#f9bec7']; // colorful confetti
+    for (let i = 0; i < 70; i++) { // more confetti
+        const confetti = document.createElement('div');
+        confetti.classList.add('confetti');
+        confetti.style.left = Math.random() * 100 + 'vw';
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.animationDuration = (2 + Math.random() * 3) + 's'; // random speed
+        confetti.style.width = (5 + Math.random() * 10) + 'px';
+        confetti.style.height = confetti.style.width;
+        document.body.appendChild(confetti);
+
+        // Remove confetti after animation ends
+        setTimeout(() => confetti.remove(), 5000);
+    }
+}
+        // Continuous decorative bubbles
+        setInterval(() => {
+            const bubble = document.createElement('div');
+            bubble.classList.add('bubble');
+            bubble.style.left = Math.random() * 100 + 'vw';
+            bubble.style.animationDuration = (8 + Math.random() * 5) + 's';
+            document.body.appendChild(bubble);
+            setTimeout(() => bubble.remove(), 12000);
+        }, 800);
+    </script>
+</body>
+</html>
