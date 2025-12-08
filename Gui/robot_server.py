@@ -10,12 +10,13 @@ import threading
 import time
 import sys
 import os
+import import_ipynb
 
 # Add parent folder to path for imports
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
 
 try:
-    from core.robot_controller import RobotController
+    from robot_controller import RobotController
 except ImportError:
     print("⚠️  Warning: Could not import RobotController - running in mock mode")
     RobotController = None
