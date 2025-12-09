@@ -24,7 +24,7 @@ except ImportError:
 HOST = '0.0.0.0'  # Listen on all interfaces
 PORT = 9001       # Must match pi_client.py PORT
 
-# ============= ANIMAL POSITIONS (examples - customize for your setup) =============
+# ============= ANIMAL POSITIONS  =============
 ANIMAL_POSITIONS = {
     'lion': {'x': 180, 'y': 50, 'z': 100},
     'tiger': {'x': 180, 'y': -50, 'z': 100},
