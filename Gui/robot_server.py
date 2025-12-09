@@ -10,15 +10,26 @@ import threading
 import time
 import sys
 import os
-import import_ipynb
+#import import_ipynb
 
 # Add parent folder to path for imports
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
-
+GUI_DIR = os.path.dirname(os.path.abspath(__file__))        # gui/
+PROJECT_ROOT = os.path.abspath(os.path.join(GUI_DIR, "..")) # project root
+# Add core/ to sys.path
+CORE_DIR = os.path.abspath(os.path.join(os.getcwd(), '..', 'core'))
+sys.path.insert(0, CORE_DIR)
+ 
 try:
     from robot_controller import RobotController
-except ImportError:
-    print("⚠️  Warning: Could not import RobotController - running in mock mode")
+    print("✓ RobotController loaded successfully")
+except ImportError as e:
+    print("⚠️ Warning: Could not import RobotController - running in mock mode")
+    print(f"   ImportError details: {e}")
+    RobotController = None
+except Exception as e:
+    print("⚠️ Some other error occurred while importing RobotController")
+    print(f"   Exception details: {e}")
     RobotController = None
 
 HOST = '0.0.0.0'  # Listen on all interfaces
@@ -61,7 +72,7 @@ class RobotServer:
         
         try:
             print("🤖 Initializing robot server...")
-            self.robot = RobotController(use_real_hardware=use_real_hardware)
+            self.robot = RobotController(use_real_hardware=True)
             self.robot.connect()
             self.robot.home()
             print("✅ Robot initialized and homed")
@@ -309,45 +320,77 @@ class RobotServer:
 
 
 def handle_client_connection(conn, addr, server):
-    """
-    Handle incoming connection from GUI client.
-    
-    Args:
-        conn: Socket connection
-        addr: Client address
-        server: RobotServer instance
-    """
-    print(f"🔗 Client connected: {addr}")
+    print(f"🔗 GUI connected from: {addr}")
+
     try:
         with conn:
-            # Receive command
-            data = conn.recv(2048)
-            if not data:
-                print(f"❌ No data received from {addr}")
-                return
-            
-            command = data.decode('utf-8')
-            print(f"📨 Received: {command}")
-            
-            # Parse and execute command
-            response = server.parse_command(command)
-            print(f"📤 Sending: {response}")
-            
-            # Send JSON response
-            conn.send(json.dumps(response).encode('utf-8'))
-    
-    except Exception as e:
-        print(f"❌ Error handling client {addr}: {e}")
-        try:
-            error_response = {
-                'status': 'sad',
-                'message': f'Server error: {str(e)}'
+
+            # ------------------------------------------------------
+            # 1️⃣ Send handshake to GUI immediately after connect
+            # ------------------------------------------------------
+            handshake = {
+                "status": "connected",
+                "message": "🤖 Robot server online and ready!",
+                "robot_ready": server.robot.is_connected,
+                "mode": "real" if server.robot.is_connected else "simulation"
             }
-            conn.send(json.dumps(error_response).encode('utf-8'))
-        except:
-            pass
-    finally:
-        print(f"🔌 Client disconnected: {addr}")
+
+            conn.send(json.dumps(handshake).encode("utf-8"))
+            print("📤 Sent handshake message to GUI")
+
+            # ------------------------------------------------------
+            # 2️⃣ Wait for a command
+            # ------------------------------------------------------
+            data = conn.recv(4096)
+            if not data:
+                print("⚠ GUI disconnected before sending any data")
+                return
+
+            command_str = data.decode("utf-8")
+            print(f"📨 Received raw command: {command_str}")
+
+            # Parse JSON
+            try:
+                command_json = json.loads(command_str)
+            except json.JSONDecodeError:
+                print("❌ Invalid JSON received")
+                conn.send(json.dumps({
+                    "status": "error",
+                    "message": "Invalid JSON received"
+                }).encode("utf-8"))
+                return
+
+            # ------------------------------------------------------
+            # 3️⃣ Extract command and run robot action
+            # ------------------------------------------------------
+            action = command_json.get("action")
+            print(f"➡ Executing action: {action}")
+
+            if action == "TEST":
+                result = server.robot.beep(300)
+                response = {"status": "ok", "result": "beeped"}
+
+            elif action == "PICK":
+                animal = command_json.get("animal")
+                result = server.robot.pick_animal(animal)
+                response = {"status": "ok", "result": result}
+
+            elif action == "DROP":
+                zone = command_json.get("zone")
+                result = server.robot.drop_in_zone(zone)
+                response = {"status": "ok", "result": result}
+
+            else:
+                response = {"status": "error", "message": "Unknown action"}
+
+            # ------------------------------------------------------
+            # 4️⃣ Send response back to GUI
+            # ------------------------------------------------------
+            conn.send(json.dumps(response).encode("utf-8"))
+            print("📤 Response sent to GUI")
+
+    except Exception as e:
+        print(f"❌ Error in connection handler: {e}")
 
 
 def start_server(use_real_hardware=False, host=None, port=None):

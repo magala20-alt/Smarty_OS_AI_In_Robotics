@@ -1,7 +1,7 @@
 import socket
 import json
 
-PI_HOST = '127.0.0.1'  # change to Pi IP when deploying
+PI_HOST = '192.168.1.11'  
 PI_PORT = 9001
 
 def send_command_to_pi(command_text, timeout=8):
