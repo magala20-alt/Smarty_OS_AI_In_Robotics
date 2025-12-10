@@ -47,9 +47,9 @@ setup_imports()
 def safe_import_robot_controller():
     """Safely import RobotController with fallback"""
     try:
-        from robot_controller import RobotController
+        from robot_controller import Robot_Controller
         print("✅ RobotController loaded")
-        return RobotController
+        return Robot_Controller
     except ImportError as e:
         print(f"⚠️  Warning: Could not import RobotController: {e}")
         print("⚠️  Running in MOCK mode - no actual robot control")
@@ -81,8 +81,7 @@ def safe_import_detector():
         print(f"⚠️  Warning: Could not import ObjectDetector3D: {e}")
         print("⚠️  Vision features will be disabled")
         return None
-
-RobotController = safe_import_robot_controller()
+Robot_Controller = safe_import_robot_controller()
 pixel_to_shelf = safe_import_calibration()
 ObjectDetector3D = safe_import_detector()
 
@@ -91,7 +90,7 @@ GUI_HOST = '0.0.0.0'  # Allow connections from any IP
 GUI_PORT = 5000       # Web interface port
 
 # YOLO Model path - UPDATE THIS TO YOUR MODEL
-MODEL_PATH = 'model/runs/train/toy_animals_full/weights/best.pt'  # or 'yolov8n.pt' or your trained model path
+MODEL_PATH = './model/runs/train/toy_animals_full/weights/best.pt'  
 
 # ============= FALLBACK ANIMAL POSITIONS =============
 FALLBACK_POSITIONS = {
@@ -129,12 +128,12 @@ class RobotController_Manager:
         self.current_object = None
         
         # Initialize robot hardware
-        if RobotController is None:
+        if Robot_Controller is None:
             print("⚠️  RobotController not available - using mock mode only")
         else:
             try:
                 print("🤖 Initializing robot...")
-                self.robot = RobotController(use_real_hardware=use_real_hardware)
+                self.robot = Robot_Controller(use_real_hardware=use_real_hardware)
                 self.robot.connect()
                 self.robot.home()
                 print("✅ Robot initialized and homed")
@@ -150,7 +149,7 @@ class RobotController_Manager:
                 self.detector = ObjectDetector3D(
                     model_path=MODEL_PATH,
                     camera_calibration_path='calibration_files/',
-                    camera_index=0
+                    camera_index=-1
                 )
                 print("✅ Vision system initialized")
             except Exception as e:
@@ -343,7 +342,7 @@ class RobotController_Manager:
             source = "📷 Vision detected" if self.use_vision else "📍 Using saved position"
             print(f"🔍 {source}: Searching for {animal} at {pos}")
             
-            self.robot.move_to(pos['x'], pos['y'], pos['z'] + 100, gripper_open=True)
+            self.robot.move_to_(pos['x'], pos['y'], pos['z'] + 100, gripper_open=True)
             
             vision_emoji = "📷" if self.use_vision else "📍"
             return {'status': 'happy', 'message': f'Dora found the {animal}! {vision_emoji}🐾'}
@@ -407,6 +406,14 @@ class RobotController_Manager:
                 self.detector.close_camera()
             except Exception as e:
                 print(f"⚠️  Error closing camera: {e}")
+
+
+
+
+
+
+
+
 
 
 # ============= FLASK WEB APPLICATION =============
@@ -557,7 +564,7 @@ def execute_command(command):
 
 # ============= MAIN APPLICATION =============
 
-def start_application(use_real_hardware=False, use_vision=True, 
+def start_application(use_real_hardware=True, use_vision=True, 
                      host=None, port=None, debug=False):
     """Start the unified robot server and GUI with vision support."""
     global robot_manager
@@ -611,6 +618,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', default=MODEL_PATH,
                        help=f'Path to YOLO model (default: {MODEL_PATH})')
     
+   
     args = parser.parse_args()
     
     if args.model:
@@ -618,7 +626,7 @@ if __name__ == '__main__':
     
     try:
         start_application(
-            use_real_hardware=args.hardware,
+            use_real_hardware=True,
             use_vision=not args.no_vision,
             host=args.host,
             port=args.port,

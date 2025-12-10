@@ -30,7 +30,7 @@ class ObjectDetector3D:
             pass  # Fall back to CPU
         
         try:
-            self.model.half()  # Use half precision (FP16) for faster inference
+            self.model.model.float()  # Use half precision (FP16) for faster inference
         except:
             pass  # If half precision not available, continue with FP32
         
