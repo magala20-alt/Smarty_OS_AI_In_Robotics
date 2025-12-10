@@ -21,6 +21,7 @@ class ObjectDetector3D:
             camera_calibration_path: Path to camera calibration files (optional)
             camera_index: Camera device index (default 0)
         """
+        
         self.model = YOLO(model_path)
         
         # Optimize model for inference speed

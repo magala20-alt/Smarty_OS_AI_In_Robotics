@@ -149,7 +149,7 @@ class RobotController_Manager:
                 self.detector = ObjectDetector3D(
                     model_path=MODEL_PATH,
                     camera_calibration_path='calibration_files/',
-                    camera_index=-1
+                    camera_index=0
                 )
                 print("✅ Vision system initialized")
             except Exception as e:
@@ -163,82 +163,129 @@ class RobotController_Manager:
     
     def detect_object_position(self, animal_name):
         """
-        Use camera and YOLO to detect object position in real-time.
-        
-        Args:
-            animal_name: Name of animal to detect
-            
-        Returns:
-            dict: {'x': float, 'y': float, 'z': float} or None if not found
+        Continuously scan camera feed until animal_name is detected.
+        Shows grid, live detections, and stops immediately when found.
+        If not found within extra_time seconds → fallback.
         """
+
         if not self.use_vision or not self.detector:
-            print("⚠️  Vision not available, using fallback position")
+            print("⚠️ Vision not active — using fallback coordinates.")
             return FALLBACK_POSITIONS.get(animal_name)
-        
+
         try:
-            print(f"📷 Capturing frame to detect {animal_name}...")
-            
-            # Open camera
+            print(f"📷 Opening camera to detect '{animal_name}'...")
+
+            # Open webcam
             if not self.detector.open_camera():
-                print("❌ Failed to open camera")
+                print("❌ Failed to open camera.")
                 return FALLBACK_POSITIONS.get(animal_name)
-            
-            # Capture frame
-            ret, frame = self.detector.cap.read()
-            if not ret:
-                print("❌ Failed to capture frame")
-                self.detector.close_camera()
-                return FALLBACK_POSITIONS.get(animal_name)
-            
-            # Apply undistortion if available
-            if (self.detector.map1 is not None and 
-                self.detector.map2 is not None and 
-                CV2_AVAILABLE):
+
+            print("🔍 Starting live scan… Move object into camera view!")
+            import cv2
+            start_time = time.time()
+            extra_time = 10  # seconds to wait if not found
+
+            found_detection = None
+
+            while True:
+                ret, frame = self.detector.cap.read()
+                if not ret:
+                    continue
+
+                # Undistort if calibration is available
+                if (self.detector.map1 is not None and self.detector.map2 is not None):
+                    try:
+                        frame = cv2.remap(frame, self.detector.map1,
+                                        self.detector.map2, cv2.INTER_LINEAR)
+                    except:
+                        pass
+
+                display = frame.copy()
+
+                # ===== Draw grid overlay =====
                 try:
-                    frame = cv2.remap(frame, self.detector.map1,
-                                    self.detector.map2, cv2.INTER_LINEAR)
-                except Exception as e:
-                    print(f"⚠️  Warning: Undistortion failed: {e}")
-            
-            # Run YOLO detection
-            print(f"🔍 Running detection for {animal_name}...")
-            detections = self.detector.detect_animals(frame)
-            
-            # Find target animal
-            target_detection = None
-            for label, cx, cy, x1, y1, x2, y2, conf in detections:
-                if label.lower() == animal_name.lower():
-                    target_detection = (label, cx, cy, x1, y1, x2, y2, conf)
+                    self.detector.draw_virtual_grid(display)
+                except:
+                    pass
+
+                # Run YOLO detection
+                detections = self.detector.detect_animals(frame)
+
+                # Draw boxes live
+                for label, cx, cy, x1, y1, x2, y2, conf in detections:
+                    color = (0, 255, 0) if label.lower() == animal_name.lower() else (0, 165, 255)
+                    cv2.rectangle(display, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
+                    cv2.circle(display, (cx, cy), 5, color, -1)
+                    cv2.putText(display, f"{label} {conf:.2f}",
+                                (int(x1), int(y1)-10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+                    # Check match
+                    if label.lower() == animal_name.lower():
+                        found_detection = (label, cx, cy, x1, y1, x2, y2, conf)
+
+                # Show real-time feed
+                cv2.putText(display, f"Looking for: {animal_name}",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+                cv2.imshow(f"Detecting {animal_name}", display)
+
+                # If match → stop camera immediately
+                if found_detection:
+                    print(f"✅ '{animal_name}' detected!")
                     break
-            
+
+                # If time is up → stop
+                if time.time() - start_time > extra_time:
+                    print(f"⌛ Timeout — '{animal_name}' not detected.")
+                    break
+
+                # ESC key to cancel manually
+                if cv2.waitKey(1) & 0xFF == 27:
+                    print("⏭️ User aborted detection.")
+                    break
+
+            # Close the feed window
+            cv2.destroyAllWindows()
             self.detector.close_camera()
-            
-            if not target_detection:
-                print(f"❌ {animal_name} not detected in frame")
+
+            # ----- No match found -----
+            if not found_detection:
                 return FALLBACK_POSITIONS.get(animal_name)
-            
-            # Extract detection info
-            label, cx, cy, x1, y1, x2, y2, conf = target_detection
+
+            # ----- Convert successful detection -----
+            label, cx, cy, x1, y1, x2, y2, conf = found_detection
             bbox_height = y2 - y1
-            
-            print(f"✅ Detected {label} at pixel ({cx}, {cy}) with confidence {conf:.2f}")
-            
-            # Convert to robot coordinates
-            X, Y, Z = pixel_to_shelf(cx, cy, bbox_height_pixels=bbox_height, 
+
+            print(f"📌 Pixel: ({cx}, {cy})  |  Conf: {conf:.2f}")
+            X, Y, Z = pixel_to_shelf(cx, cy, bbox_height_pixels=bbox_height,
                                     label=label, shelf_z=0)
-            
-            if X is None or Y is None or Z is None:
-                print("❌ Failed to convert coordinates")
+
+            if X is None:
+                print("❌ Failed converting coordinates → fallback used.")
                 return FALLBACK_POSITIONS.get(animal_name)
-            
-            print(f"📍 Robot coordinates: X={X:.2f}mm, Y={Y:.2f}mm, Z={Z:.2f}mm")
-            
+
+            print(f"📍 Robot Coordinates → X={X:.2f}, Y={Y:.2f}, Z={Z:.2f}")
+
+            # Optional: snapshot like your SPACE-mode
+            snapshot = frame.copy()
+            cv2.rectangle(snapshot, (int(x1), int(y1)), (int(x2), int(y2)),
+                        (0, 255, 0), 2)
+            cv2.circle(snapshot, (cx, cy), 6, (0,255,0), -1)
+            cv2.putText(snapshot, f"{label} CONF={conf:.2f}",
+                        (int(x1), int(y1)-15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            cv2.putText(snapshot, f"X={X:.1f} Y={Y:.1f} Z={Z:.1f}",
+                        (10, snapshot.shape[0]-20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
+            cv2.imshow("Detection Snapshot", snapshot)
+            cv2.waitKey(2000)
+            cv2.destroyWindow("Detection Snapshot")
+
             return {'x': float(X), 'y': float(Y), 'z': float(Z)}
-        
+
         except Exception as e:
-            print(f"❌ Error in vision detection: {e}")
-            import traceback
-            traceback.print_exc()
+            print("❌ Vision detection error:", e)
+            cv2.destroyAllWindows()
             return FALLBACK_POSITIONS.get(animal_name)
     
     def parse_command(self, command_text):
@@ -292,6 +339,12 @@ class RobotController_Manager:
         if 'home' in cmd:
             return self.go_home()
         
+         # --- STANDALONE ANIMAL COMMAND ---
+     # User clicked a picture (e.g. "lion")
+        if found_animal:
+        # Default behaviour: search for the animal
+         return self.search_object(found_animal)
+    
         # --- DEFAULT ---
         return {'status': 'sad', 'message': "I didn't understand that! Say 'help' for commands. 😢"}
     
@@ -313,7 +366,7 @@ class RobotController_Manager:
             source = "📷 Vision detected" if self.use_vision else "📍 Using saved position"
             print(f"🎯 {source}: Grabbing {animal} at {pos}")
             
-            success = self.robot.pick_object(pos['x'], pos['y'], pos['z'], obj_label=animal)
+            success = self.robot.pick_object(obj_label=animal, z_mm=pos['z'])
             
             if success:
                 self.holding_object = True
@@ -327,13 +380,14 @@ class RobotController_Manager:
             print(f"❌ Error grabbing object: {e}")
             return {'status': 'sad', 'message': f'Oops! Something went wrong: {str(e)}'}
     
+
     def search_object(self, animal):
-        """Search for an object using vision or move to fallback position."""
-        if not self.robot:
-            vision_status = " (VISION)" if self.use_vision else " (FALLBACK)"
-            return {'status': 'happy', 'message': f'[MOCK{vision_status}] Dora found the {animal}! 🐾'}
-        
+        """
+        Search for an object using vision or move to fallback position.
+        Camera preview works even if robot is not connected.
+        """
         try:
+            # Always try vision detection first (even without robot)
             pos = self.detect_object_position(animal)
             
             if not pos:
@@ -342,15 +396,26 @@ class RobotController_Manager:
             source = "📷 Vision detected" if self.use_vision else "📍 Using saved position"
             print(f"🔍 {source}: Searching for {animal} at {pos}")
             
-            self.robot.move_to_(pos['x'], pos['y'], pos['z'] + 100, gripper_open=True)
+            # If no robot, just show detection result
+            if not self.robot:
+                vision_status = " (VISION)" if self.use_vision else " (FALLBACK)"
+                return {
+                    'status': 'sad', 
+                    'message': f'[MOCK{vision_status}] Dora found the {animal} at position ({pos["x"]:.0f}, {pos["y"]:.0f}, {pos["z"]:.0f})! 🐾'
+                }
+            
+            # If robot exists, move to position
+            self.robot.move_to_label_position(animal, "approach", gripper_open=True, z_mm=pos['z'])
             
             vision_emoji = "📷" if self.use_vision else "📍"
             return {'status': 'happy', 'message': f'Dora found the {animal}! {vision_emoji}🐾'}
         
         except Exception as e:
             print(f"❌ Error searching: {e}")
+            import traceback
+            traceback.print_exc()
             return {'status': 'sad', 'message': f'I could not search: {str(e)}'}
-    
+
     def put_back_object(self):
         """Put object back in drop zone and return home."""
         if not self.robot:
@@ -363,7 +428,7 @@ class RobotController_Manager:
             print(f"🏠 Putting back {self.current_object}")
             
             drop = DROP_ZONE
-            self.robot.move_to(drop['x'], drop['y'], drop['z'], gripper_open=False)
+            self.robot.move_to_label_position(drop['x'], drop['y'], drop['z'], gripper_open=False)
             self.robot.set_gripper(True)
             time.sleep(0.5)
             self.robot.home()

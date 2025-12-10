@@ -134,7 +134,7 @@ class Robot_Controller:
             
             self.is_connected = True
             print("✅ Hardware connection established")
-            self.beep()
+            self.beep(200)
             return True
 
         except Exception as e:
@@ -204,7 +204,7 @@ class Robot_Controller:
             angles = self._adjust_angles_for_height(angles, z_mm, obj_label)
 
         print(f"📍 Moving to {position_type} position for {obj_label}")
-        return self._execute_move(angles)
+        return self._execute_move(angles, MOVE_TIME_MS=900)
 
     def set_gripper(self, open_state, move_time=500):
         angle = 0 if open_state else 50
