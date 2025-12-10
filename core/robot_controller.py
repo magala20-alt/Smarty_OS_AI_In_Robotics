@@ -21,7 +21,7 @@ import os
 
 # Add parent folder to path to import coord_converter
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
-from coord_converter import pixel_to_shelf
+from calibration_files.Coord_converter import pixel_to_shelf
 
 # ============= ROBOT CONFIGURATION =============
 # DofBot workspace limits (in mm, relative to robot base)
@@ -74,7 +74,10 @@ CLASS_SERVO_ANGLES = {
         "lift": [],
         "grasp": [102, 98,40,13,89,152]
     }
+    
 }
+DROP_ZONE_SERVOS = [150, 90, 90, 90, 90, 0]
+HOME_SERVOS=[90, 90, 90, 90, 90, 0]
 
 class RobotController:
     """
@@ -315,7 +318,7 @@ class RobotController:
             print(f"   Detected height: z={z_mm:.1f}mm")
         print(f"{'='*60}")
 
-        if obj_label not in LABEL_SERVO_POSITIONS:
+        if obj_label not in CLASS_SERVO_ANGLES:
             print(f"❌ Unknown object label: {obj_label}")
             return False
 

@@ -23,7 +23,7 @@ DONE! Open: http://localhost:5000
 ## 📊 System Overview
 
 ```
-Voice Input (Microphone)
+Image and text Input
     ↓
 Flask App (port 5000)
     ↓
@@ -38,23 +38,14 @@ Dora Responds (Happy/Sad)
 
 ---
 
-## 🎤 Voice Commands
 
-| Say This         | Robot Does               | Response                     |
-| ---------------- | ------------------------ | ---------------------------- |
-| "Find the lion"  | Moves to lion position   | "Dora found the lion! 🐾"    |
-| "Grab the tiger" | Picks up tiger           | "Dora grabbed the tiger! 🤗" |
-| "Put it back"    | Drops object, goes home  | "We did it! 🎉"              |
-| "Home"           | Returns to safe position | "Dora is ready! 🏠"          |
-| "Help"           | Lists animals            | "I can find: lion, tiger..." |
 
 ---
 
 ## 📁 Key Files
 
 | File                       | What It Does                           |
-| -------------------------- | -------------------------------------- |
-| `Gui/robot_server.py`      | Bridge between GUI and robot           |
+| -------------------------- | -------------------------------------- |          |
 | `Gui/app.ipynb`            | Web server & Flask app                 |
 | `Gui/pi_client.py`         | Sends commands to server               |
 | `core/robot_controller.py` | Controls the arm (convert from .ipynb) |

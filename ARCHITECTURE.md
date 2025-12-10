@@ -1,3 +1,4 @@
+
 # System Architecture Diagram
 
 ## Current System Layout
@@ -6,7 +7,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          WEB BROWSER                                 │
 │  http://localhost:5000  (Child-friendly voice interface)            │
-│  - Voice recognition input                                          │
+│  - Test or Image input                                              │
 │  - Displays Dora animations                                         │
 │  - Shows status messages                                            │
 └──────────────────────────┬──────────────────────────────────────────┘
@@ -34,10 +35,9 @@
 │           (Gui/robot_server.py - Your bridge!)                      │
 │                                                                      │
 │  Responsibilities:                                                  │
-│  1. Accept commands from GUI client                                │
-│  2. Parse natural language ("find lion" → grab_object("lion"))     │
-│  3. Call RobotController methods                                   │
-│  4. Send JSON response back to GUI                                 │
+│  1. Accept commands from GUI client                                │    │
+│  2. Call RobotController methods                                   │
+│  3. Send JSON response back to GUI                                 │
 │                                                                      │
 │  Key Methods:                                                       │
 │  - parse_command(text)   → Route command to handler                │
