@@ -2,16 +2,6 @@
 Unified Robot Server + GUI with Camera & Object Detection
 Combines Flask web interface with robot control and YOLO vision
 Runs on Raspberry Pi (or localhost for testing)
-
-Directory Structure:
-project_root/
-├── core/
-│   └── dofbot_gui.py  ← THIS FILE
-├── Gui/
-│   ├── templates/
-│   │   └── Index.html
-│   └── static/
-└── ... other files
 """
 
 import sys
@@ -167,9 +157,9 @@ class RobotController_Manager:
         """
         # --- Default/fallback Z (servo-based) ---
         DEFAULT_Z = 200
-
-        # If no robot or vision disabled, return default
-        if not self.robot or not self.use_vision or self.detector is None:
+       
+        # # If vision disabled, return default
+        if not self.use_vision or self.detector is None:
             print(f"⚠️ Vision disabled or detector unavailable — using preset servo position for '{animal_name}'")
             return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
 
@@ -199,6 +189,10 @@ class RobotController_Manager:
                     frame = cv2.remap(frame, self.detector.map1, self.detector.map2, cv2.INTER_LINEAR)
                 except:
                     pass
+            display = frame.copy()
+
+            # Draw grid
+            self.detector.draw_virtual_grid(display)
 
             # Run YOLO detection
             detections = self.detector.detect_animals(frame)
@@ -226,7 +220,7 @@ class RobotController_Manager:
                 print(f"⚠️ Conversion failed — using default Z={DEFAULT_Z}")
                 return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': conf}
 
-            # Annotated snapshot (optional display)
+            # Annotated snapshot (display)
             try:
                 snapshot = frame.copy()
                 cv2.rectangle(snapshot, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
@@ -236,8 +230,10 @@ class RobotController_Manager:
                 cv2.putText(snapshot, f"X={X:.1f} Y={Y:.1f} Z={Z:.1f}",
                             (10, snapshot.shape[0]-20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
+                
+                cv2.namedWindow("Detection Snapshot", cv2.WINDOW_NORMAL)
                 cv2.imshow("Detection Snapshot", snapshot)
-                cv2.waitKey(2000)
+                cv2.waitKey(8000)
                 cv2.destroyWindow("Detection Snapshot")
             except:
                 pass  # Ignore display errors
@@ -259,8 +255,7 @@ class RobotController_Manager:
         
         animals = list(FALLBACK_POSITIONS.keys())
         found_animal = next((animal for animal in animals if animal in cmd), None)
-        
-        # --- VISION CONTROL ---
+        # --- VISION TOGGLE COMMAND ---
         if 'vision' in cmd:
             if 'on' in cmd:
                 if ObjectDetector3D is not None:
@@ -295,7 +290,7 @@ class RobotController_Manager:
         # --- FIND/SEARCH COMMAND ---
         if any(word in cmd for word in ['find', 'search', 'look']):
             if found_animal:
-                return self.search_object(found_animal)
+                return self.grab_object(found_animal)
             else:
                 return {'status': 'confused', 'message': 'What animal are we looking for? 🔍'}
         
@@ -307,22 +302,20 @@ class RobotController_Manager:
      # User clicked a picture (e.g. "lion")
         if found_animal:
         # Default behaviour: search for the animal
-         return self.search_object(found_animal)
+         return self.grab_object(found_animal)
     
         # --- DEFAULT ---
         return {'status': 'sad', 'message': "I didn't understand that! Say 'help' for commands. 😢"}
     
     def grab_object(self, animal):
         """Grab object using servo angles. Always executes even if detection fails."""
-        if not self.robot:
-            vision_status = " (VISION)" if self.use_vision else " (DEFAULT)"
-            return {'status': 'grab', 'message': f'[MOCK{vision_status}] Dora grabbed the {animal}! 🤗'}
-
         try:
             if self.holding_object:
                 return {'status': 'sad', 'message': f'I am already holding the {self.current_object}! 😢'}
 
             pos = self.detect_object_position(animal)
+            if not pos:
+                return {'status': 'sad', 'message': f'I have not seen the {animal}! 😢'}
             z_mm = pos.get('z', 200)
 
             print(f"🎯 Grabbing {animal} using servo angles → Z={z_mm}")

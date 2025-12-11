@@ -46,29 +46,29 @@ CLASS_SERVO_ANGLES = {
         "grasp": [75,98,20,86,85,102]
     },
     "tiger": {
-        "approach": [109, 93, 42, 88, 89, 162],
-        "lift": [],
-        "grasp": [109, 93, 15, 57, 89, 174]
+        "approach": [87,114,8,37,86,66],
+        "lift": [85,150,21,0,89,134],
+        "grasp": [89,103,29,20,89,127]
     },
     "elephant": {
-        "approach": [86, 127, 3, 61, 89, 174],
-        "lift": [],
-        "grasp": [86, 98, 40, 13, 89, 152]
+        "approach": [90.91,52,74,88,103],
+        "lift": [90,133,50,40,88,137],
+        "grasp": [90,91,52,74,88,135]
     },
     "cheetah": {
-        "approach": [97, 117, 15, 57, 89, 174],
-        "lift": [],
-        "grasp": [97, 98, 40, 13, 89, 152]
+        "approach": [68,69,85,66,88,91],
+        "lift": [56,96,81,53,88,155],
+        "grasp": [68,69,85,66,88,115]
     },
     "zebra": {
-        "approach": [88, 104, 40, 8, 89, 168],
-        "lift": [],
-        "grasp": [88, 98, 40, 13, 89, 152]
+        "approach": [67,106,14,38,89,79],
+        "lift": [64,152,0,42,89,142],
+        "grasp": [67,106,14,38,89,136]
     },
     "giraffe": {
-        "approach": [102, 98, 40, 13, 89, 152],
-        "lift": [],
-        "grasp": [102, 98, 40, 13, 89, 152]
+        "approach": [89,106,24,65,88,13],
+        "lift": [89,161,7,42,88,155],
+        "grasp": [89,104,25,65,88,155]
     }
 }
 
@@ -226,12 +226,12 @@ class Robot_Controller:
         """
         Full pick sequence:
         - Adjust angles for display
-        - Use hardcoded servo angles for execution
+        - Use hardcoded servo angles for execution with adjustment
         """
         print("\n" + "="*60)
         print(f"🤖 PICK SEQUENCE: {obj_label.upper()}")
         if z_mm is not None:
-            print(f"   Detected coordinates: Z={z_mm:.1f} (X/Y ignored)")
+            print(f"   Detected coordinates: Z={z_mm:.1f}")
 
         if obj_label not in CLASS_SERVO_ANGLES:
             print(f"❌ Unknown object label: {obj_label}")
@@ -263,14 +263,14 @@ class Robot_Controller:
 
     def pick_detected_object(self, detection_data):
         """
-        Display detected X/Y/Z for presentation.
-        Use hardcoded servo angles for movement.
+        Pick an object based on detection data dictionary.
+        Expects keys: 'label', 'z', 'confidence'.
         """
         label = detection_data.get('label', 'unknown')
         z = detection_data.get('z', None)
         conf = detection_data.get('confidence', 0.0)
 
         if z is not None:
-            print(f"📦 Detected: {label} at Z={z:.1f} (X/Y ignored)")
+            print(f"📦 Detected: {label} at Z={z:.1f}")
 
         return self.pick_object(label, z_mm=z)
