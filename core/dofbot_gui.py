@@ -160,134 +160,98 @@ class RobotController_Manager:
         else:
             print("⚠️  Vision system not available - using fallback positions")
             self.use_vision = False
-    
     def detect_object_position(self, animal_name):
         """
-        Continuously scan camera feed until animal_name is detected.
-        Shows grid, live detections, and stops immediately when found.
-        If not found within extra_time seconds → fallback.
+        Take a snapshot if vision is available, otherwise use preset servo angles.
+        Always returns a position dict for the robot to execute the pick.
         """
+        # --- Default/fallback Z (servo-based) ---
+        DEFAULT_Z = 200
 
-        if not self.use_vision or not self.detector:
-            print("⚠️ Vision not active — using fallback coordinates.")
-            return FALLBACK_POSITIONS.get(animal_name)
+        # If no robot or vision disabled, return default
+        if not self.robot or not self.use_vision or self.detector is None:
+            print(f"⚠️ Vision disabled or detector unavailable — using preset servo position for '{animal_name}'")
+            return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
 
         try:
-            print(f"📷 Opening camera to detect '{animal_name}'...")
+            # Try to open camera
+            if not self.detector.open_camera() or self.detector.cap is None:
+                print(f"❌ Failed to open camera — using preset servo position for '{animal_name}'")
+                return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
 
-            # Open webcam
-            if not self.detector.open_camera():
-                print("❌ Failed to open camera.")
-                return FALLBACK_POSITIONS.get(animal_name)
-
-            print("🔍 Starting live scan… Move object into camera view!")
             import cv2
-            start_time = time.time()
-            extra_time = 10  # seconds to wait if not found
+            import os
+            os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
+            os.environ["QT_QPA_PLATFORM"] = "xcb"
 
-            found_detection = None
+            # Take single snapshot
+            ret, frame = self.detector.cap.read()
+            if not ret or frame is None:
+                print(f"❌ Failed to capture snapshot — using preset servo position for '{animal_name}'")
+                self.detector.close_camera()
+                return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
 
-            while True:
-                ret, frame = self.detector.cap.read()
-                if not ret:
-                    continue
+            print(f"📸 Snapshot captured for '{animal_name}'")
 
-                # Undistort if calibration is available
-                if (self.detector.map1 is not None and self.detector.map2 is not None):
-                    try:
-                        frame = cv2.remap(frame, self.detector.map1,
-                                        self.detector.map2, cv2.INTER_LINEAR)
-                    except:
-                        pass
-
-                display = frame.copy()
-
-                # ===== Draw grid overlay =====
+            # Undistort if calibration available
+            if self.detector.map1 is not None and self.detector.map2 is not None:
                 try:
-                    self.detector.draw_virtual_grid(display)
+                    frame = cv2.remap(frame, self.detector.map1, self.detector.map2, cv2.INTER_LINEAR)
                 except:
                     pass
 
-                # Run YOLO detection
-                detections = self.detector.detect_animals(frame)
+            # Run YOLO detection
+            detections = self.detector.detect_animals(frame)
+            found_detection = None
 
-                # Draw boxes live
-                for label, cx, cy, x1, y1, x2, y2, conf in detections:
-                    color = (0, 255, 0) if label.lower() == animal_name.lower() else (0, 165, 255)
-                    cv2.rectangle(display, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
-                    cv2.circle(display, (cx, cy), 5, color, -1)
-                    cv2.putText(display, f"{label} {conf:.2f}",
-                                (int(x1), int(y1)-10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+            for label, cx, cy, x1, y1, x2, y2, conf in detections:
+                if label.lower() == animal_name.lower():
+                    found_detection = (label, cx, cy, x1, y1, x2, y2, conf)
+                    break  # first match
 
-                    # Check match
-                    if label.lower() == animal_name.lower():
-                        found_detection = (label, cx, cy, x1, y1, x2, y2, conf)
-
-                # Show real-time feed
-                cv2.putText(display, f"Looking for: {animal_name}",
-                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
-                cv2.imshow(f"Detecting {animal_name}", display)
-
-                # If match → stop camera immediately
-                if found_detection:
-                    print(f"✅ '{animal_name}' detected!")
-                    break
-
-                # If time is up → stop
-                if time.time() - start_time > extra_time:
-                    print(f"⌛ Timeout — '{animal_name}' not detected.")
-                    break
-
-                # ESC key to cancel manually
-                if cv2.waitKey(1) & 0xFF == 27:
-                    print("⏭️ User aborted detection.")
-                    break
-
-            # Close the feed window
-            cv2.destroyAllWindows()
+            # Close camera
             self.detector.close_camera()
 
-            # ----- No match found -----
+            # If no detection → use default Z
             if not found_detection:
-                return FALLBACK_POSITIONS.get(animal_name)
+                print(f"⚠️ '{animal_name}' not detected in snapshot — using default Z={DEFAULT_Z}")
+                return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
 
-            # ----- Convert successful detection -----
+            # Convert detection to robot coordinates
             label, cx, cy, x1, y1, x2, y2, conf = found_detection
             bbox_height = y2 - y1
+            X, Y, Z = pixel_to_shelf(cx, cy, bbox_height_pixels=bbox_height, label=label, shelf_z=0)
 
-            print(f"📌 Pixel: ({cx}, {cy})  |  Conf: {conf:.2f}")
-            X, Y, Z = pixel_to_shelf(cx, cy, bbox_height_pixels=bbox_height,
-                                    label=label, shelf_z=0)
+            if X is None or Y is None or Z is None:
+                print(f"⚠️ Conversion failed — using default Z={DEFAULT_Z}")
+                return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': conf}
 
-            if X is None:
-                print("❌ Failed converting coordinates → fallback used.")
-                return FALLBACK_POSITIONS.get(animal_name)
+            # Annotated snapshot (optional display)
+            try:
+                snapshot = frame.copy()
+                cv2.rectangle(snapshot, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                cv2.circle(snapshot, (cx, cy), 6, (0, 255, 0), -1)
+                cv2.putText(snapshot, f"{label} {conf:.2f}", (int(x1), int(y1)-15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                cv2.putText(snapshot, f"X={X:.1f} Y={Y:.1f} Z={Z:.1f}",
+                            (10, snapshot.shape[0]-20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
+                cv2.imshow("Detection Snapshot", snapshot)
+                cv2.waitKey(2000)
+                cv2.destroyWindow("Detection Snapshot")
+            except:
+                pass  # Ignore display errors
 
-            print(f"📍 Robot Coordinates → X={X:.2f}, Y={Y:.2f}, Z={Z:.2f}")
-
-            # Optional: snapshot like your SPACE-mode
-            snapshot = frame.copy()
-            cv2.rectangle(snapshot, (int(x1), int(y1)), (int(x2), int(y2)),
-                        (0, 255, 0), 2)
-            cv2.circle(snapshot, (cx, cy), 6, (0,255,0), -1)
-            cv2.putText(snapshot, f"{label} CONF={conf:.2f}",
-                        (int(x1), int(y1)-15),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-            cv2.putText(snapshot, f"X={X:.1f} Y={Y:.1f} Z={Z:.1f}",
-                        (10, snapshot.shape[0]-20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
-            cv2.imshow("Detection Snapshot", snapshot)
-            cv2.waitKey(2000)
-            cv2.destroyWindow("Detection Snapshot")
-
-            return {'x': float(X), 'y': float(Y), 'z': float(Z)}
+            return {'x': float(X), 'y': float(Y), 'z': float(Z), 'label': label, 'confidence': conf}
 
         except Exception as e:
-            print("❌ Vision detection error:", e)
-            cv2.destroyAllWindows()
-            return FALLBACK_POSITIONS.get(animal_name)
-    
+            print(f"❌ Vision detection error: {e} — using preset servo position")
+            try:
+                cv2.destroyAllWindows()
+            except:
+                pass
+            return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
+
     def parse_command(self, command_text):
         """Parse natural language commands."""
         cmd = command_text.lower().strip()
@@ -349,37 +313,31 @@ class RobotController_Manager:
         return {'status': 'sad', 'message': "I didn't understand that! Say 'help' for commands. 😢"}
     
     def grab_object(self, animal):
-        """Detect and grab an object using vision or fallback positions."""
+        """Grab object using servo angles. Always executes even if detection fails."""
         if not self.robot:
-            vision_status = " (VISION)" if self.use_vision else " (FALLBACK)"
+            vision_status = " (VISION)" if self.use_vision else " (DEFAULT)"
             return {'status': 'grab', 'message': f'[MOCK{vision_status}] Dora grabbed the {animal}! 🤗'}
-        
+
         try:
             if self.holding_object:
                 return {'status': 'sad', 'message': f'I am already holding the {self.current_object}! 😢'}
-            
+
             pos = self.detect_object_position(animal)
-            
-            if not pos:
-                return {'status': 'sad', 'message': f'I do not know where the {animal} is! 😢'}
-            
-            source = "📷 Vision detected" if self.use_vision else "📍 Using saved position"
-            print(f"🎯 {source}: Grabbing {animal} at {pos}")
-            
-            success = self.robot.pick_object(obj_label=animal, z_mm=pos['z'])
-            
-            if success:
-                self.holding_object = True
-                self.current_object = animal
-                vision_emoji = "📷" if self.use_vision else "📍"
-                return {'status': 'grab', 'message': f'Dora grabbed the {animal}! {vision_emoji}🤗'}
-            else:
-                return {'status': 'sad', 'message': f'I could not grab the {animal}! 😢'}
-        
+            z_mm = pos.get('z', 200)
+
+            print(f"🎯 Grabbing {animal} using servo angles → Z={z_mm}")
+            success = self.robot.pick_object(obj_label=animal, z_mm=z_mm)
+
+            self.holding_object = True
+            self.current_object = animal
+
+            vision_emoji = "📷" if self.use_vision else "📍"
+            return {'status': 'grab', 'message': f'Dora grabbed the {animal}! {vision_emoji}🤗'}
+
         except Exception as e:
             print(f"❌ Error grabbing object: {e}")
             return {'status': 'sad', 'message': f'Oops! Something went wrong: {str(e)}'}
-    
+
 
     def search_object(self, animal):
         """

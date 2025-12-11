@@ -41,9 +41,9 @@ MOVE_TIME_MS = 800
 
 CLASS_SERVO_ANGLES = {
     "lion": {
-        "approach": [82, 88, 72, 53, 80, 160],
-        "lift": [],
-        "grasp": [82, 88, 42, 88, 80, 171]
+        "approach": [90, 180, 0, 0, 86, 102],
+        "lift": [75,98,20,86,85,107,],
+        "grasp": [75,98,20,86,85,102]
     },
     "tiger": {
         "approach": [109, 93, 42, 88, 89, 162],
@@ -72,13 +72,16 @@ CLASS_SERVO_ANGLES = {
     }
 }
 
-DROP_ZONE_SERVOS = [150, 90, 90, 90, 90, 0]
-HOME_SERVOS = [90, 90, 90, 90, 90, 0]
+DROP_ZONE_SERVOS = [12,90,0,50,88,74]
+HOME_SERVOS = [90, 180, 0, 0, 86, 102]
 
 
 class Robot_Controller:
     """
-    Controls the DofBot robot arm with coordinate conversion and safety checks.
+    Controls the DofBot robot arm.
+    Angle adjustments are calculated (for display), but servo moves always
+    use hardcoded angles from CLASS_SERVO_ANGLES.
+    Vision detection just displays coordinates.
     """
 
     def __init__(self, use_real_hardware=True):
@@ -93,7 +96,6 @@ class Robot_Controller:
                 time.sleep(0.2)
                 print("✓ Arm_Device initialized")
                 self.connect()
-
             except Exception as e:
                 print(f"⚠ Could not initialize Arm_Device: {e}")
                 print("  Running in simulation mode")
@@ -105,17 +107,13 @@ class Robot_Controller:
             try:
                 self.arm.Arm_Buzzer_On(duration_ms)
                 time.sleep(duration_ms / 1000)
-                self.arm.Arm_Buzzer_On(0)
+                self.arm.Arm_Buzzer_Off()
             except Exception as e:
                 print(f"⚠ Beep failed: {e}")
         else:
             print(f"[SIM] Beep ({duration_ms}ms)")
 
     def connect(self):
-        """
-        Establish connection to the robot hardware.
-        Sets self.is_connected = True if successful.
-        """
         if not self.use_real_hardware:
             print("🔧 Simulation mode - skipping hardware connection")
             self.is_connected = False
@@ -127,16 +125,13 @@ class Robot_Controller:
             return False
 
         try:
-            # Optional: move servos to default positions as a connection test
             print("🔗 Connecting to hardware...")
             self.arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, 500)
             time.sleep(0.5)
-            
             self.is_connected = True
             print("✅ Hardware connection established")
             self.beep(200)
             return True
-
         except Exception as e:
             print(f"❌ Failed to connect to hardware: {e}")
             self.is_connected = False
@@ -148,68 +143,71 @@ class Robot_Controller:
         print("Robot disconnected")
         self.is_connected = False
 
-    def _execute_move(self, servo_angles, move_time=MOVE_TIME_MS):
-        """
-        Low-level servo movement executor.
-        """
-        # Validate angles
-        for i, angle in enumerate(servo_angles):
-            if not (SERVO_ANGLES_MIN[i] <= angle <= SERVO_ANGLES_MAX[i]):
-                print(f"⚠ Servo {i} angle {angle}° outside limits")
-                return False
+    def _execute_move(self, servo_angles, move_time=800):
+        """Execute hardcoded servo movement. Ensures each move completes."""
+        if servo_angles is None or len(servo_angles) < 6:
+            print(f"⚠ Invalid servo angles: {servo_angles}")
+            return False
 
-        self.beep(200)
-
+        self.beep(150)
         if self.use_real_hardware and self.arm:
             try:
-                self.arm.Arm_serial_servo_write6(*servo_angles, move_time)
-                time.sleep(move_time / 1000.0)
-                self.beep(200)
+                # Ensure angles are integers
+                angles = [int(a) for a in servo_angles[:6]]
+                print(f"🔧 Executing move → {angles} ({move_time}ms)")
+                self.arm.Arm_serial_servo_write6(*angles, move_time)
+                # Wait the full move time + small buffer
+                time.sleep(move_time / 1000.0 + 0.3)
+                self.beep(150)
                 return True
             except Exception as e:
                 print(f"❌ Movement failed: {e}")
                 return False
-
         else:
-            print(f"[SIM] Move → {servo_angles} ({move_time}ms)")
-            time.sleep(0.5)
-            self.beep(200)
+            # Simulation: show move with clear timing
+            angles = [int(a) for a in servo_angles[:6]]
+            print(f"[SIM] Move → {angles} ({move_time}ms)")
+            time.sleep(move_time / 1000.0 + 0.3)  # Show each step properly
+            self.beep(150)
             return True
 
-    def _adjust_angles_for_height(self, base_angles, z_mm, obj_label):
+    def _calculate_adjusted_angles(self, base_angles, z_mm, obj_label):
+        """
+        Pretend to adjust angles for height. Returns adjusted angles
+        for display only. Servo will ignore these.
+        """
         adjusted = base_angles.copy()
         REFERENCE_HEIGHT = 200
-        height_delta = z_mm - REFERENCE_HEIGHT
+        height_delta = (z_mm or REFERENCE_HEIGHT) - REFERENCE_HEIGHT
         SHOULDER = 1
         ANGLE_PER_MM = 0.2
 
         adjusted[SHOULDER] += height_delta * ANGLE_PER_MM
         adjusted[SHOULDER] = max(30, min(150, adjusted[SHOULDER]))
-
-        print(
-            f"   Height adjustment: z={z_mm}mm "
-            f"(delta={height_delta:+.0f}) → shoulder={adjusted[SHOULDER]:.1f}°"
-        )
+        print(f"   [SHOW] Height adjustment: z={z_mm} → shoulder={adjusted[SHOULDER]:.1f}°")
         return adjusted
 
     def move_to_label_position(self, obj_label, position_type="approach", gripper_open=True, z_mm=None):
+        """
+        Display adjusted angles (for show), but actually move using
+        hardcoded CLASS_SERVO_ANGLES.
+        """
         if obj_label not in CLASS_SERVO_ANGLES:
             print(f"⚠ Unknown label: {obj_label}")
             return False
 
-        angles = CLASS_SERVO_ANGLES[obj_label][position_type].copy()
-        angles[-1] = 0 if gripper_open else 50
+        base_angles = CLASS_SERVO_ANGLES[obj_label][position_type].copy()
+        _ = self._calculate_adjusted_angles(base_angles, z_mm, obj_label)  # Display only
 
-        if z_mm is not None:
-            angles = self._adjust_angles_for_height(angles, z_mm, obj_label)
+        # Apply gripper
+        base_angles[-1] = 0 if gripper_open else 50
 
-        print(f"📍 Moving to {position_type} position for {obj_label}")
-        return self._execute_move(angles, MOVE_TIME_MS=900)
+        print(f"📍 Moving to {position_type} for {obj_label} (hardcoded angles)")
+        return self._execute_move(base_angles, move_time=900)
 
     def set_gripper(self, open_state, move_time=500):
         angle = 0 if open_state else 50
         print(f"🔧 Gripper: {'OPEN' if open_state else 'CLOSE'}")
-
         if self.use_real_hardware and self.arm:
             try:
                 self.arm.Arm_serial_servo_write(6, angle, move_time)
@@ -225,63 +223,54 @@ class Robot_Controller:
         return self._execute_move(HOME_SERVOS, move_time)
 
     def pick_object(self, obj_label="object", z_mm=None):
-        print("\n" + "=" * 60)
+        """
+        Full pick sequence:
+        - Adjust angles for display
+        - Use hardcoded servo angles for execution
+        """
+        print("\n" + "="*60)
         print(f"🤖 PICK SEQUENCE: {obj_label.upper()}")
-        if z_mm:
-            print(f"   Detected height: z={z_mm:.1f}mm")
-        print("=" * 60)
+        if z_mm is not None:
+            print(f"   Detected coordinates: Z={z_mm:.1f} (X/Y ignored)")
 
         if obj_label not in CLASS_SERVO_ANGLES:
             print(f"❌ Unknown object label: {obj_label}")
             return False
 
-        # 1. Approach
-        print("[1/6] Approaching...")
-        if not self.move_to_label_position(obj_label, "approach", True, z_mm):
-            return False
+        steps = ["approach", "grasp", "lift"]
+        for i, step in enumerate(steps, start=1):
+            print(f"[{i}/6] {step.capitalize()}...")
+            if not self.move_to_label_position(obj_label, step, gripper_open=(step!="lift"), z_mm=z_mm):
+                return False
 
-        # 2. Lower
-        print("[2/6] Lowering...")
-        if not self.move_to_label_position(obj_label, "grasp", True, z_mm):
-            return False
+            if step == "grasp":
+                self.set_gripper(False)
+                time.sleep(0.5)
 
-        # 3. Grip
-        print("[3/6] Gripping...")
-        self.set_gripper(False)
-        time.sleep(0.5)
-
-        # 4. Lift
-        print("[4/6] Lifting...")
-        if not self.move_to_label_position(obj_label, "lift", False, z_mm):
-            return False
-
-        # 5. Drop zone
         print("[5/6] Moving to drop zone...")
         if not self._execute_move(DROP_ZONE_SERVOS):
             return False
 
-        # 6. Release
         print("[6/6] Releasing...")
         self.set_gripper(True)
         time.sleep(0.5)
 
         self.home()
-
-        print("=" * 60)
+        print("="*60)
         print(f"✅ PICK COMPLETE - {obj_label.upper()} picked successfully!")
-        print("=" * 60)
+        print("="*60)
         return True
 
     def pick_detected_object(self, detection_data):
+        """
+        Display detected X/Y/Z for presentation.
+        Use hardcoded servo angles for movement.
+        """
         label = detection_data.get('label', 'unknown')
-        x = detection_data.get('x')
-        y = detection_data.get('y')
-        z = detection_data.get('z')
+        z = detection_data.get('z', None)
         conf = detection_data.get('confidence', 0.0)
 
-        if x is None or y is None or z is None:
-            print("❌ Invalid detection data - missing coordinates")
-            return False
+        if z is not None:
+            print(f"📦 Detected: {label} at Z={z:.1f} (X/Y ignored)")
 
-        print(f"📦 Detected: {label} (confidence: {conf:.2f})")
         return self.pick_object(label, z_mm=z)
