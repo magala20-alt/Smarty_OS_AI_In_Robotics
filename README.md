@@ -1,6 +1,6 @@
 # Smarty_OS_AI_In_Robotics
 ## Description
-Smarty OS is an educational AI-powered DoFBOT robot designed to help children explore robotics through interactive play. Using a child-friendly graphical interface, kids can type simple commands such as “Where is the giraffe?”, or they can select an animal directly through picture-based buttons. Smarty OS then uses computer vision and robotics control to locate the correct toy animal on the shelf and attempt to pick it up.
+Smarty OS is an educational AI-powered DoFBOT robot designed to help children explore robotics through interactive play. Using a child-friendly graphical interface, kids can type simple commands such as “grab zebra”, or they can select an animal directly through picture-based buttons. Smarty OS then uses computer vision and robotics control to locate the correct toy animal on the shelf and attempt to pick it up.
 
 After retrieving the requested animal, the GUI updates to confirm that the item has been successfully found. This project provides a fun hands-on introduction to AI and robotics concepts.
 
@@ -21,9 +21,7 @@ Once the GUI loads, you can interact with the robot in two ways:
 
 Type simple instructions such as:
 
-“Where is the giraffe?”
-
-“Pick up the lion.”
+“Grab lion”
 
 Smarty OS will identify the correct toy animal on the shelf and attempt to pick it up.
 
@@ -73,8 +71,5 @@ Under "USB 2.0 Camera", you will see the available camera indices (e.g., /dev/vi
 Use one of the camera indices listed above in your Python code:
 cap = cv2.VideoCapture(<camera_index>)
 Replace <camera_index> with the correct number (0, 1, 2, ...).
-
-
-
 
 
