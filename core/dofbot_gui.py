@@ -267,9 +267,12 @@ class RobotController_Manager:
             cv2.imshow("Detection Snapshot", snapshot)
             cv2.waitKey(4000)
             cv2.destroyWindow("Detection Snapshot")
+            
         except:
             pass
-
+            # --- Final Cleanup --
+            try: del frame
+            except: pass
         return {'x': float(X), 'y': float(Y), 'z': float(Z), 'label': label, 'confidence': conf}
 
     def parse_command(self, command_text):

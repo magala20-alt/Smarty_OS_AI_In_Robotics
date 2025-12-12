@@ -90,8 +90,8 @@ class ObjectDetector3D:
 
         # Optimize camera settings
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffer for real-time capture
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 300)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 200)
         self.cap.set(cv2.CAP_PROP_FPS, 30)
 
         # Get actual frame dimensions
