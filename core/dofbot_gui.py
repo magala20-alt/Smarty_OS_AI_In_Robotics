@@ -155,98 +155,122 @@ class RobotController_Manager:
         Take a snapshot if vision is available, otherwise use preset servo angles.
         Always returns a position dict for the robot to execute the pick.
         """
-        # --- Default/fallback Z (servo-based) ---
+        import cv2
+        import os
+        os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
+
         DEFAULT_Z = 200
-       
-        # # If vision disabled, return default
+
+        # Vision disabled → fallback
         if not self.use_vision or self.detector is None:
             print(f"⚠️ Vision disabled or detector unavailable — using preset servo position for '{animal_name}'")
             return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
 
+        frame = None  # will hold snapshot
+
         try:
-            # Try to open camera
+            # --- Open Camera ---
             if not self.detector.open_camera() or self.detector.cap is None:
-                print(f"❌ Failed to open camera — using preset servo position for '{animal_name}'")
+                print(f"❌ Failed to open camera — using preset servo position")
                 return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
 
-            import cv2
-            import os
-            os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
-            os.environ["QT_QPA_PLATFORM"] = "xcb"
-
-            # Take single snapshot
+            # --- Capture Snapshot ---
             ret, frame = self.detector.cap.read()
+
             if not ret or frame is None:
-                print(f"❌ Failed to capture snapshot — using preset servo position for '{animal_name}'")
-                self.detector.close_camera()
+                print(f"❌ Failed to capture snapshot — using preset servo position")
                 return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
 
             print(f"📸 Snapshot captured for '{animal_name}'")
 
-            # Undistort if calibration available
+            # --- Undistort if calibration exists ---
             if self.detector.map1 is not None and self.detector.map2 is not None:
                 try:
                     frame = cv2.remap(frame, self.detector.map1, self.detector.map2, cv2.INTER_LINEAR)
                 except:
                     pass
-            display = frame.copy()
 
-            # Draw grid
+            display = frame.copy()
             self.detector.draw_virtual_grid(display)
 
-            # Run YOLO detection
+            # --- Run YOLO ---
             detections = self.detector.detect_animals(frame)
-            found_detection = None
+            found = None
 
             for label, cx, cy, x1, y1, x2, y2, conf in detections:
                 if label.lower() == animal_name.lower():
-                    found_detection = (label, cx, cy, x1, y1, x2, y2, conf)
-                    break  # first match
-
-            # Close camera
-            self.detector.close_camera()
-
-            # If no detection → use default Z
-            if not found_detection:
-                print(f"⚠️ '{animal_name}' not detected in snapshot — using default Z={DEFAULT_Z}")
-                return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
-
-            # Convert detection to robot coordinates
-            label, cx, cy, x1, y1, x2, y2, conf = found_detection
-            bbox_height = y2 - y1
-            X, Y, Z = pixel_to_shelf(cx, cy, bbox_height_pixels=bbox_height, label=label, shelf_z=0)
-
-            if X is None or Y is None or Z is None:
-                print(f"⚠️ Conversion failed — using default Z={DEFAULT_Z}")
-                return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': conf}
-
-            # Annotated snapshot (display)
-            try:
-                snapshot = frame.copy()
-                cv2.rectangle(snapshot, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                cv2.circle(snapshot, (cx, cy), 6, (0, 255, 0), -1)
-                cv2.putText(snapshot, f"{label} {conf:.2f}", (int(x1), int(y1)-15),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-                cv2.putText(snapshot, f"X={X:.1f} Y={Y:.1f} Z={Z:.1f}",
-                            (10, snapshot.shape[0]-20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
-                
-                cv2.namedWindow("Detection Snapshot", cv2.WINDOW_NORMAL)
-                cv2.imshow("Detection Snapshot", snapshot)
-                cv2.waitKey(8000)
-                cv2.destroyWindow("Detection Snapshot")
-            except:
-                pass  # Ignore display errors
-
-            return {'x': float(X), 'y': float(Y), 'z': float(Z), 'label': label, 'confidence': conf}
+                    found = (label, cx, cy, x1, y1, x2, y2, conf)
+                    break
 
         except Exception as e:
-            print(f"❌ Vision detection error: {e} — using preset servo position")
+            print(f"❌ Vision detection error BEFORE closing camera: {e}")
+            return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
+
+        finally:
+            # ALWAYS close camera — prevents second-run freeze!
             try:
-                cv2.destroyAllWindows()
+                self.detector.close_camera()
             except:
                 pass
-            return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': animal_name, 'confidence': 0.0}
+
+        # ----------------------------------------------------------------------
+        # Handle NO DETECTION
+        # ----------------------------------------------------------------------
+        if not found:
+            print(f"😢 '{animal_name}' was not detected — showing snapshot anyway")
+
+            try:
+                snapshot = frame.copy()
+                cv2.putText(snapshot, f"No '{animal_name}' found",
+                            (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+                cv2.namedWindow("Detection Snapshot", cv2.WINDOW_NORMAL)
+                cv2.imshow("Detection Snapshot", snapshot)
+                cv2.waitKey(4000)
+                cv2.destroyWindow("Detection Snapshot")
+            except Exception as ex:
+                print(f"Display error: {ex}")
+
+            return {
+                'x': 0,
+                'y': 0,
+                'z': DEFAULT_Z,
+                'label': animal_name,
+                'confidence': 0.0
+            }
+
+        # ----------------------------------------------------------------------
+        # Detected: Convert to robot coords
+        # ----------------------------------------------------------------------
+        label, cx, cy, x1, y1, x2, y2, conf = found
+        bbox_height = y2 - y1
+
+        X, Y, Z = pixel_to_shelf(cx, cy, bbox_height_pixels=bbox_height, label=label, shelf_z=0)
+
+        if X is None or Y is None or Z is None:
+            print(f"⚠️ Coordinate conversion failed — using fallback Z")
+            return {'x': 0, 'y': 0, 'z': DEFAULT_Z, 'label': label, 'confidence': conf}
+
+        # Display annotated snapshot
+        try:
+            snapshot = frame.copy()
+            cv2.rectangle(snapshot, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            cv2.circle(snapshot, (cx, cy), 6, (0, 255, 0), -1)
+            cv2.putText(snapshot, f"{label} {conf:.2f}", (int(x1), int(y1)-15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            cv2.putText(snapshot, f"X={X:.1f} Y={Y:.1f} Z={Z:.1f}",
+                        (10, snapshot.shape[0]-20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
+
+            cv2.namedWindow("Detection Snapshot", cv2.WINDOW_NORMAL)
+            cv2.imshow("Detection Snapshot", snapshot)
+            cv2.waitKey(4000)
+            cv2.destroyWindow("Detection Snapshot")
+        except:
+            pass
+
+        return {'x': float(X), 'y': float(Y), 'z': float(Z), 'label': label, 'confidence': conf}
 
     def parse_command(self, command_text):
         """Parse natural language commands."""
