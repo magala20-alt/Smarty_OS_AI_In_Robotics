@@ -15,7 +15,7 @@ After retrieving the requested animal, the GUI updates to confirm that the item 
 4. Launch the GUI by running: python dofbot_gui.py
 5. After running the command, a JupyterLab link will appear in the terminal.
    Copy the link and paste it into your web browser.
-6. Once JupyterLab opens, run dofbot_gui.py to start the Smarty OS graphical interface.
+6. Once JupyterLab starts the Smarty OS graphical interface.
 
 ### Usage
 
@@ -41,6 +41,20 @@ After the task is completed, the GUI will display a message confirming that the 
 
 All required Python libraries are included in requirements.txt.  
 Make sure you have Python 3.8+ installed.
+
+# It is important to set up an environment: follow these steps
+
+Step 1: run in terminal, Create .venv directory
+python -m venv dofbotvenv
+
+Step 2 Activate environment:
+dofbotvenv\Scripts\activate
+or
+source dofbotvenv\Scripts\activate
+
+Step 3: Download required libraries
+This will take a long time but downloads everything:
+pip install -r requirements.txt
 
 ### Troubleshooting Camera Issues
 
