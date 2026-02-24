@@ -1,20 +1,24 @@
 # Smarty_OS_AI_In_Robotics
+
 ## Description
+
 Smarty OS is an educational AI-powered DoFBOT robot designed to help children explore robotics through interactive play. Using a child-friendly graphical interface, kids can type simple commands such as “grab zebra”, or they can select an animal directly through picture-based buttons. Smarty OS then uses computer vision and robotics control to locate the correct toy animal on the shelf and attempt to pick it up.
 
 After retrieving the requested animal, the GUI updates to confirm that the item has been successfully found. This project provides a fun hands-on introduction to AI and robotics concepts.
 
 ## Getting Started
+
 1. Clone the repository to your local machine.
 2. Open a terminal, navigate to the project folder, and install dependencies by running: pip install -r requirements.txt
-The requirements.txt file includes all the necessary libraries for running the project.
+   The requirements.txt file includes all the necessary libraries for running the project.
 3. In the same terminal, navigate to the core directory: cd Smarty_OS_AI_In_Robotics/core
 4. Launch the GUI by running: python dofbot_gui.py
 5. After running the command, a JupyterLab link will appear in the terminal.
-Copy the link and paste it into your web browser.
+   Copy the link and paste it into your web browser.
 6. Once JupyterLab opens, run dofbot_gui.py to start the Smarty OS graphical interface.
 
 ### Usage
+
 Once the GUI loads, you can interact with the robot in two ways:
 
 1. Text or Pictures
@@ -34,10 +38,12 @@ Simply click on the animal you want, and the robot will move to pick it up autom
 After the task is completed, the GUI will display a message confirming that the animal has been successfully found and retrieved.
 
 ### Prerequisites
+
 All required Python libraries are included in requirements.txt.  
 Make sure you have Python 3.8+ installed.
 
-### Troubleshooting  Camera Issues
+### Troubleshooting Camera Issues
+
 Use the steps below to verify that your camera is properly detected and working.
 
 1. Test the camera feed
@@ -72,4 +78,8 @@ Use one of the camera indices listed above in your Python code:
 cap = cv2.VideoCapture(<camera_index>)
 Replace <camera_index> with the correct number (0, 1, 2, ...).
 
+## Contributors
 
+Angel Magala - Robotic Movement
+Sebabatso Maloi -AI model development
+Mehtaab Andoo - GUI
